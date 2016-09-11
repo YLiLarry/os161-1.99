@@ -396,6 +396,13 @@ cmd_kheapstats(int nargs, char **args)
 	return 0;
 }
 
+static int cmd_dth(int n, char **args) {
+	(void)n;
+	(void)args;
+	dbflags = dbflags | DB_THREADS;
+	return 0;
+}
+
 ////////////////////////////////////////
 //
 // Menus.
@@ -520,6 +527,7 @@ cmd_mainmenu(int n, char **a)
 	return 0;
 }
 
+
 ////////////////////////////////////////
 //
 // Command table.
@@ -534,7 +542,10 @@ static struct {
 	{ "help",	cmd_mainmenu },
 	{ "?o",		cmd_opsmenu },
 	{ "?t",		cmd_testmenu },
-
+	
+	/* debug */
+	{ "dth",	   cmd_dth },
+	
 	/* operations */
 	{ "s",		cmd_shell },
 	{ "p",		cmd_prog },

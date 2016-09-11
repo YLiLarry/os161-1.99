@@ -1,1 +1,5 @@
-
+/os161-1.99/kern/compile/
+*.img
+*.tgz
+/os161-1.99/kern/build
+/root/
