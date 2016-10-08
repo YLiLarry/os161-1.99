@@ -150,6 +150,7 @@ V(struct semaphore *sem)
 struct lock *
 lock_create(const char *name)
 {
+        /* Self Init */
         struct lock *lock;
 
         lock = kmalloc(sizeof(struct lock));
@@ -163,7 +164,20 @@ lock_create(const char *name)
                 return NULL;
         }
         
+        lock->locked = false;
+        
         // add stuff here as needed
+        
+        /* Init spin lock */
+        // should this be kernal memory
+        lock->spinlock = kmalloc(sizeof(struct spinlock));
+        if (lock->spinlock == NULL) {
+                return NULL;
+        }
+        spinlock_init(lock->spinlock);
+        
+        /* Init wchan lock */
+        lock->wchan = wchan_create(name);
         
         return lock;
 }
@@ -172,9 +186,15 @@ void
 lock_destroy(struct lock *lock)
 {
         KASSERT(lock != NULL);
+        KASSERT(! lock->locked);
 
         // add stuff here as needed
-        
+        /* Destroy wchan lock */
+        wchan_destroy(lock->wchan);
+        /* Destroy spin lock */
+        spinlock_cleanup(lock->spinlock);
+        kfree(lock->spinlock);
+        /* Self Destroy */
         kfree(lock->lk_name);
         kfree(lock);
 }
@@ -183,26 +203,37 @@ void
 lock_acquire(struct lock *lock)
 {
         // Write this
-
-        (void)lock;  // suppress warning until code gets written
+        spinlock_acquire(lock->spinlock);
+        while(lock->locked) {
+                spinlock_release(lock->spinlock);
+                wchan_lock(lock->wchan);
+                wchan_sleep(lock->wchan);
+                spinlock_acquire(lock->spinlock);
+        }
+        lock->locked = true;
+        lock->curthread = curthread;
+        spinlock_release(lock->spinlock);
 }
 
 void
 lock_release(struct lock *lock)
 {
+        if (! lock_do_i_hold(lock)) {
+              return;  
+        }
+        KASSERT(lock_do_i_hold(lock));
         // Write this
-
-        (void)lock;  // suppress warning until code gets written
+        spinlock_acquire(lock->spinlock);
+        lock->locked = false;
+        spinlock_release(lock->spinlock);
+        wchan_wakeone(lock->wchan);
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
         // Write this
-
-        (void)lock;  // suppress warning until code gets written
-
-        return true; // dummy until code gets written
+        return (lock->curthread == curthread);
 }
 
 ////////////////////////////////////////////////////////////
