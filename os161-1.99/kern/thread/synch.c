@@ -203,9 +203,11 @@ lock_acquire(struct lock *lock)
 {
         // Write this
         spinlock_acquire(lock->spinlock);
+        // Check dead lock
+        KASSERT(! lock_do_i_hold(lock)); 
         while(lock->locked) {
-                spinlock_release(lock->spinlock);
                 wchan_lock(lock->wchan);
+                spinlock_release(lock->spinlock);
                 wchan_sleep(lock->wchan);
                 spinlock_acquire(lock->spinlock);
         }
@@ -217,21 +219,21 @@ lock_acquire(struct lock *lock)
 void
 lock_release(struct lock *lock)
 {
-        if (! lock_do_i_hold(lock)) {
-              return;  
-        }
-        KASSERT(lock_do_i_hold(lock));
         // Write this
         spinlock_acquire(lock->spinlock);
+        // Check ownership
+        KASSERT(lock_do_i_hold(lock));
         lock->locked = false;
-        spinlock_release(lock->spinlock);
+        lock->curthread = NULL;
         wchan_wakeone(lock->wchan);
+        spinlock_release(lock->spinlock);
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
         // Write this
+        // Lock is assumed 
         return (lock->curthread == curthread);
 }
 

@@ -5,24 +5,93 @@
 #include <opt-A1.h>
 
 /* 
- * This simple default synchronization mechanism allows only vehicle at a time
- * into the intersection.   The intersectionSem is used as a a lock.
- * We use a semaphore rather than a lock so that this code will work even
- * before locks are implemented.
- */
-
-/* 
  * Replace this default synchronization mechanism with your own (better) mechanism
  * needed for your solution.   Your mechanism may use any of the available synchronzation
  * primitives, e.g., semaphores, locks, condition variables.   You are also free to 
  * declare other global variables if your solution requires them.
  */
 
+
+/*
+My Solution:
+
+The condition for a car Va to pass is, for all Vb all followings
+are true:
+
+• Va.ori = Vb.ori, or
+• Va.ori = Vb.dest and Va.dest = Vb.ori, or
+• Va.dest != Vb.dest, and at least one of them is making a right turn
+
+For (1) (2) we use 4 integers representing # of cars from origins, 
+and 4 integers represeting the same for dests
+For (3) we also a integer representing # of cars NOT making a right turn
+
+*/
+
 /*
  * replace this with declarations of any synchronization and other variables you need here
  */
-static struct semaphore *intersectionSem;
+volatile unsigned int origin[4] = {0};
+volatile unsigned int destination[4] = {0};
+volatile unsigned int num_not_right = 0;
+volatile unsigned int total = 0;
+struct lock* intersection_lock;
+struct cv* intersection_cv;
 
+/* helpers */
+
+static bool all_from(Direction o) {
+  for (unsigned int i = 0; i <= 3; i++) {
+    if (i != o && origin[i] > 0) {
+      return false;
+    } 
+  }
+  return true;
+}
+
+static bool all_to(Direction d) {
+  for (unsigned int i = 0; i <= 3; i++) {
+    if (i != d && destination[i] > 0) {
+      return false;
+    } 
+  }
+  return true;
+}
+
+static bool none_to(Direction d) {
+  return destination[d] == 0;
+}
+
+static bool is_right_turn(Direction o, Direction d) {
+  return (o == north && d == west) || 
+         (o == west && d == south) ||  
+         (o == south && d == east) ||  
+         (o == east && d == north);  
+}
+
+static bool car_can_pass(Direction o, Direction d) {
+  return all_from(o) ||
+         (all_from(d) && all_to(o)) ||
+         (none_to(d) && (is_right_turn(o,d) || num_not_right == 0));
+}
+
+static void car_passing(Direction o, Direction d) {
+  total++;
+  origin[o]++;
+  destination[d]++;
+  if (! is_right_turn(o,d)) {
+    num_not_right++;
+  }
+}
+
+static void car_passed(Direction o, Direction d) {
+  total--;
+  origin[o]--;
+  destination[d]--;
+  if (! is_right_turn(o,d)) {
+    num_not_right--;
+  }
+}
 
 /* 
  * The simulation driver will call this function once before starting
@@ -34,13 +103,8 @@ static struct semaphore *intersectionSem;
 void
 intersection_sync_init(void)
 {
-  /* replace this default implementation with your own implementation */
-
-  intersectionSem = sem_create("intersectionSem",1);
-  if (intersectionSem == NULL) {
-    panic("could not create intersection semaphore");
-  }
-  return;
+  intersection_cv = cv_create("Intersection CV");
+  intersection_lock = lock_create("Intersection Lock");
 }
 
 /* 
@@ -53,9 +117,8 @@ intersection_sync_init(void)
 void
 intersection_sync_cleanup(void)
 {
-  /* replace this default implementation with your own implementation */
-  KASSERT(intersectionSem != NULL);
-  sem_destroy(intersectionSem);
+  cv_destroy(intersection_cv);
+  lock_destroy(intersection_lock);  
 }
 
 
@@ -75,11 +138,15 @@ intersection_sync_cleanup(void)
 void
 intersection_before_entry(Direction origin, Direction destination) 
 {
-  /* replace this default implementation with your own implementation */
-  (void)origin;  /* avoid compiler complaint about unused parameter */
-  (void)destination; /* avoid compiler complaint about unused parameter */
-  KASSERT(intersectionSem != NULL);
-  P(intersectionSem);
+  lock_acquire(intersection_lock);
+  while (! car_can_pass(origin, destination)) {
+    KASSERT(total > 0);
+    // kprintf("Car waiting %d %d\n", origin, destination);
+    cv_wait(intersection_cv, intersection_lock);
+  }
+  car_passing(origin, destination);
+  // kprintf("Car passing %d %d\n", origin, destination);
+  lock_release(intersection_lock);
 }
 
 
@@ -97,9 +164,9 @@ intersection_before_entry(Direction origin, Direction destination)
 void
 intersection_after_exit(Direction origin, Direction destination) 
 {
-  /* replace this default implementation with your own implementation */
-  (void)origin;  /* avoid compiler complaint about unused parameter */
-  (void)destination; /* avoid compiler complaint about unused parameter */
-  KASSERT(intersectionSem != NULL);
-  V(intersectionSem);
+  lock_acquire(intersection_lock);
+  car_passed(origin, destination);
+  // kprintf("Car passed %d %d\n", origin, destination);
+  cv_broadcast(intersection_cv, intersection_lock);
+  lock_release(intersection_lock);
 }
