@@ -34,7 +34,6 @@ For (3) we also a integer representing # of cars NOT making a right turn
 volatile unsigned int origin[4] = {0};
 volatile unsigned int destination[4] = {0};
 volatile unsigned int num_not_right = 0;
-volatile unsigned int total = 0;
 struct lock* intersection_lock;
 struct cv* intersection_cv;
 
@@ -76,7 +75,6 @@ static bool car_can_pass(Direction o, Direction d) {
 }
 
 static void car_passing(Direction o, Direction d) {
-  total++;
   origin[o]++;
   destination[d]++;
   if (! is_right_turn(o,d)) {
@@ -85,7 +83,6 @@ static void car_passing(Direction o, Direction d) {
 }
 
 static void car_passed(Direction o, Direction d) {
-  total--;
   origin[o]--;
   destination[d]--;
   if (! is_right_turn(o,d)) {
@@ -140,12 +137,9 @@ intersection_before_entry(Direction origin, Direction destination)
 {
   lock_acquire(intersection_lock);
   while (! car_can_pass(origin, destination)) {
-    KASSERT(total > 0);
-    // kprintf("Car waiting %d %d\n", origin, destination);
     cv_wait(intersection_cv, intersection_lock);
   }
   car_passing(origin, destination);
-  // kprintf("Car passing %d %d\n", origin, destination);
   lock_release(intersection_lock);
 }
 
@@ -166,7 +160,6 @@ intersection_after_exit(Direction origin, Direction destination)
 {
   lock_acquire(intersection_lock);
   car_passed(origin, destination);
-  // kprintf("Car passed %d %d\n", origin, destination);
   cv_broadcast(intersection_cv, intersection_lock);
   lock_release(intersection_lock);
 }
