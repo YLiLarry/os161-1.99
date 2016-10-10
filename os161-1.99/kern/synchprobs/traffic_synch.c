@@ -137,9 +137,11 @@ intersection_before_entry(Direction origin, Direction destination)
 {
   lock_acquire(intersection_lock);
   while (! car_can_pass(origin, destination)) {
+    cv_signal(intersection_cv, intersection_lock);
     cv_wait(intersection_cv, intersection_lock);
   }
   car_passing(origin, destination);
+  cv_signal(intersection_cv, intersection_lock);
   lock_release(intersection_lock);
 }
 
@@ -160,6 +162,6 @@ intersection_after_exit(Direction origin, Direction destination)
 {
   lock_acquire(intersection_lock);
   car_passed(origin, destination);
-  cv_broadcast(intersection_cv, intersection_lock);
+  cv_signal(intersection_cv, intersection_lock);
   lock_release(intersection_lock);
 }
