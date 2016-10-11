@@ -34,8 +34,12 @@ For (3) we also a integer representing # of cars NOT making a right turn
 volatile unsigned int origin[4] = {0};
 volatile unsigned int destination[4] = {0};
 volatile unsigned int num_not_right = 0;
+volatile unsigned int passing = 0;
+volatile unsigned int waiting = 0;
+volatile unsigned int exiting = 0;
 struct lock* intersection_lock;
 struct cv* intersection_cv;
+struct cv* exit_cv;
 
 /* helpers */
 
@@ -69,14 +73,16 @@ static bool is_right_turn(Direction o, Direction d) {
 }
 
 static bool car_can_pass(Direction o, Direction d) {
-  return all_from(o) ||
-         (all_from(d) && all_to(o)) ||
-         (none_to(d) && (is_right_turn(o,d) || num_not_right == 0));
+  bool cond = all_from(o) ||
+              (all_from(d) && all_to(o)) ||
+              (none_to(d) && (is_right_turn(o,d) || num_not_right == 0));
+  return cond || passing == 0;
 }
 
 static void car_passing(Direction o, Direction d) {
   origin[o]++;
   destination[d]++;
+  passing++;
   if (! is_right_turn(o,d)) {
     num_not_right++;
   }
@@ -85,6 +91,7 @@ static void car_passing(Direction o, Direction d) {
 static void car_passed(Direction o, Direction d) {
   origin[o]--;
   destination[d]--;
+  passing--;
   if (! is_right_turn(o,d)) {
     num_not_right--;
   }
@@ -101,6 +108,7 @@ void
 intersection_sync_init(void)
 {
   intersection_cv = cv_create("Intersection CV");
+  exit_cv = cv_create("Intersection Prepare CV");
   intersection_lock = lock_create("Intersection Lock");
 }
 
@@ -115,6 +123,7 @@ void
 intersection_sync_cleanup(void)
 {
   cv_destroy(intersection_cv);
+  cv_destroy(exit_cv);
   lock_destroy(intersection_lock);  
 }
 
@@ -138,10 +147,14 @@ intersection_before_entry(Direction origin, Direction destination)
   lock_acquire(intersection_lock);
   while (! car_can_pass(origin, destination)) {
     cv_signal(intersection_cv, intersection_lock);
+    cv_signal(exit_cv, intersection_lock);
+    waiting++;
     cv_wait(intersection_cv, intersection_lock);
+    waiting--;
   }
   car_passing(origin, destination);
   cv_signal(intersection_cv, intersection_lock);
+  cv_signal(exit_cv, intersection_lock);
   lock_release(intersection_lock);
 }
 
@@ -163,5 +176,16 @@ intersection_after_exit(Direction origin, Direction destination)
   lock_acquire(intersection_lock);
   car_passed(origin, destination);
   cv_signal(intersection_cv, intersection_lock);
+  while (waiting + passing == 0 && exiting > 0) {
+    lock_release(intersection_lock);
+    cv_signal(exit_cv, intersection_lock);
+    lock_acquire(intersection_lock);
+  }
+  while (waiting + passing > 1) {
+    exiting++;
+    cv_wait(exit_cv, intersection_lock);
+    exiting--;
+  } 
+  kprintf("passing=%d, waiting=%d, exiting=%d\n", passing, waiting, exiting);
   lock_release(intersection_lock);
 }
