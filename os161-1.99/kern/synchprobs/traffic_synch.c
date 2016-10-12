@@ -151,15 +151,11 @@ intersection_before_entry(Direction origin, Direction destination)
   lock_acquire(intersection_lock);
   // wait until the car can pass
   while (! car_can_pass(origin, destination)) {
-    // try next car of the same iteration
-    cv_signal(intersection_cv, intersection_lock);
     waiting++;
     cv_wait(intersection_cv, intersection_lock);
     waiting--;
   }
   car_passing(origin, destination);
-  // try next car of the same iteration
-  cv_signal(intersection_cv, intersection_lock);
   lock_release(intersection_lock);
 }
 
@@ -183,16 +179,17 @@ intersection_after_exit(Direction origin, Direction destination)
   // when there're cars in the current iteration waiting,
   // ask the next cars to pass
   if (waiting > 0) {
-    cv_signal(intersection_cv, intersection_lock);
+    cv_broadcast(intersection_cv, intersection_lock);
   }
   // if the current iteration is still running, 
   // wait until the current iteration finishes
-  while (waiting + passing > 0) {
+  if (waiting + passing > 0) {
     exiting++;
     cv_wait(iteration_cv, intersection_lock);
     exiting--;
-  } 
+  } else {
   // the current iteration is clear, wake up next iteration
-  cv_signal(iteration_cv, intersection_lock);
+    cv_broadcast(iteration_cv, intersection_lock);
+  }
   lock_release(intersection_lock);
 }
