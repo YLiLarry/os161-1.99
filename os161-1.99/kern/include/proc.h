@@ -69,6 +69,7 @@ struct proc {
 #endif
 
 	/* add more material here as needed */
+   unsigned int pid;
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */

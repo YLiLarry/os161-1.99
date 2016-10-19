@@ -132,7 +132,9 @@ syscall(struct trapframe *tf)
 #endif // UW
 
 	    /* Add stuff here */
- 
+ 	case SYS_fork:
+ 		err = sys_fork(tf, (pid_t *)&retval);
+ 		break;
 	default:
 	  kprintf("Unknown syscall %d\n", callno);
 	  err = ENOSYS;
@@ -177,7 +179,14 @@ syscall(struct trapframe *tf)
  * Thus, you can trash it and do things another way if you prefer.
  */
 void
-enter_forked_process(struct trapframe *tf)
+enter_forked_process(void* parent_tf, unsigned long nargs)
 {
-	(void)tf;
+	// copy parent's trap frame as tf
+	struct trapframe tf = *(struct trapframe*)parent_tf;
+	// modify trap frame
+	tf.tf_epc += 4; // advance pc
+	tf.tf_v0 = 0;
+	tf.tf_a3 = 0; // exit success
+	mips_usermode(&tf);
+	(void)nargs;
 }

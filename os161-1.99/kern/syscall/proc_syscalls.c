@@ -92,3 +92,34 @@ sys_waitpid(pid_t pid,
   return(0);
 }
 
+volatile unsigned int pid_count = 1;
+
+int sys_fork(struct trapframe* tf, pid_t* rv) {
+  struct proc* proc = proc_create_runprogram(curproc->p_name);
+  if (! proc) {
+    panic("Cannot create runprogram");
+    return -1;
+  }
+  spinlock_acquire(&curproc->p_lock);
+  if (as_copy(curproc->p_addrspace, &proc->p_addrspace)) {
+    panic("Cannot as_copy");
+    proc_destroy(proc);
+    spinlock_release(&curproc->p_lock);
+    return -1;
+  }
+  // assign pid
+  proc->pid = pid_count++;
+  // call thread_fork with entry function
+  // void* args[2];
+  // args[0] = curproc->p_addrspace;
+  // args[1] = tf;
+  if (thread_fork(proc->p_name, proc, &enter_forked_process, tf, 1)) {
+    panic("Cannot thread_fork");
+    proc_destroy(proc);
+    spinlock_release(&curproc->p_lock);
+    return -1; 
+  };
+  spinlock_release(&curproc->p_lock);
+  *rv = proc->pid;
+  return 0;
+}
