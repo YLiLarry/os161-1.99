@@ -9,7 +9,36 @@
 #include <thread.h>
 #include <addrspace.h>
 #include <copyinout.h>
+#include <synch.h>
+#include "opt-A2.h"
 
+#if OPT_A2
+/* process related stuff */
+
+
+static void save_process_status(struct proc* new, struct proc* parent) {
+  struct process_status* ps = kmalloc(sizeof(struct process_status));
+  ps->pid = new->pid;
+  ps->parent = parent->pid;
+  ps->valid = true;
+  ps->process = new;
+  new->ps = ps;
+  array_add(process_table, ps, NULL);
+}
+
+static struct process_status* get_process_status(pid_t pid) {
+  unsigned len = array_num(process_table);
+  for (unsigned i = 0; i < len; i++) {
+    struct process_status* ps = array_get(process_table, i); 
+    // wake parents
+    if (ps && ps->pid == pid) {
+      return ps;
+    }
+  }
+  return NULL;
+}
+
+#endif
   /* this implementation of sys__exit does not do anything with the exit code */
   /* this needs to be fixed to get exit() and waitpid() working properly */
 
@@ -19,7 +48,31 @@ void sys__exit(int exitcode) {
   struct proc *p = curproc;
   /* for now, just include this to keep the compiler from complaining about
      an unused variable */
+#if OPT_A2
+  lock_acquire(lk_process_table);
+  // remove process status
+  for (unsigned i = 0; i < array_num(process_table); i++) {
+    struct process_status* ps = array_get(process_table, i); 
+    KASSERT(ps);
+    if (ps->pid == curproc->pid) {
+      // wake parents
+      KASSERT(ps->process);
+      cv_broadcast(ps->process->cv_waitpid, lk_process_table);
+      // set self
+      ps->exitcode = _MKWAIT_EXIT(exitcode);
+      ps->valid = false;
+      ps->process = NULL;
+    }
+    // remove all children
+    if (ps->parent == curproc->pid) {
+      kfree(ps);
+      array_remove(process_table, i);
+    }
+  }
+  lock_release(lk_process_table);
+#else
   (void)exitcode;
+#endif
 
   DEBUG(DB_SYSCALL,"Syscall: _exit(%d)\n",exitcode);
 
@@ -53,20 +106,53 @@ void sys__exit(int exitcode) {
 int
 sys_getpid(pid_t *retval)
 {
+#if OPT_A2
+  *retval = curproc->pid;
+  return 0;
+#else
   /* for now, this is just a stub that always returns a PID of 1 */
   /* you need to fix this to make it work properly */
   *retval = 1;
   return(0);
+#endif
 }
 
 /* stub handler for waitpid() system call                */
 
 int
 sys_waitpid(pid_t pid,
-	    userptr_t status,
-	    int options,
-	    pid_t *retval)
+      userptr_t status,
+      int options,
+      pid_t *retval)
 {
+#if OPT_A2
+  int err = 0;
+  (void)options;
+  lock_acquire(lk_process_table);
+  struct process_status* st = get_process_status(pid);
+  // process exists
+  if (st) {
+    // if process is a child
+    if (st->parent == curproc->pid) {
+      // if process is running
+      while (st->valid) {
+        cv_wait(curproc->cv_waitpid, lk_process_table);
+      }
+      // child exits
+      err = copyout(&(st->exitcode),status,sizeof(int));
+      if (err) {return err;}
+      *retval = st->pid;
+      lock_release(lk_process_table);
+      return 0;
+    }
+    // if process isn't a child
+    lock_release(lk_process_table);
+    return -1;
+  }
+  // process doesn't exist
+  lock_release(lk_process_table);
+  return -1;    
+#else
   int exitstatus;
   int result;
 
@@ -89,37 +175,37 @@ sys_waitpid(pid_t pid,
     return(result);
   }
   *retval = pid;
+  
   return(0);
+#endif
 }
 
-volatile unsigned int pid_count = 1;
+
+#if OPT_A2
+/* Fork related stuff */
 
 int sys_fork(struct trapframe* tf, pid_t* rv) {
   struct proc* proc = proc_create_runprogram(curproc->p_name);
   if (! proc) {
-    panic("Cannot create runprogram");
     return -1;
   }
   spinlock_acquire(&curproc->p_lock);
   if (as_copy(curproc->p_addrspace, &proc->p_addrspace)) {
-    panic("Cannot as_copy");
     proc_destroy(proc);
     spinlock_release(&curproc->p_lock);
     return -1;
   }
-  // assign pid
-  proc->pid = pid_count++;
-  // call thread_fork with entry function
-  // void* args[2];
-  // args[0] = curproc->p_addrspace;
-  // args[1] = tf;
   if (thread_fork(proc->p_name, proc, &enter_forked_process, tf, 1)) {
-    panic("Cannot thread_fork");
     proc_destroy(proc);
     spinlock_release(&curproc->p_lock);
     return -1; 
   };
-  spinlock_release(&curproc->p_lock);
   *rv = proc->pid;
+  spinlock_release(&curproc->p_lock);
+  lock_acquire(lk_process_table);
+  save_process_status(proc, curproc);
+  lock_release(lk_process_table);
   return 0;
 }
+
+#endif

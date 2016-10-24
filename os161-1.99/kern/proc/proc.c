@@ -50,6 +50,9 @@
 #include <vfs.h>
 #include <synch.h>
 #include <kern/fcntl.h>  
+#if OPT_A2
+#include <limits.h>  
+#endif
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -123,7 +126,26 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
-
+	
+#if OPT_A2
+	// clean up
+	cv_destroy(proc->cv_waitpid);
+   // if was last elem, destroy table
+   if (proc_count == 1) {
+   	for (unsigned i = 0; i < array_num(process_table); i++) {
+   		struct process_status* ps = array_get(process_table, i);
+   		KASSERT(ps);
+   		KASSERT(ps->pid == proc->pid || ps->parent == proc->pid);
+   		kfree(ps);
+   		array_remove(process_table, i);
+   	}
+   	array_destroy(process_table);
+   	lock_destroy(lk_process_table);
+   	process_table = NULL;
+   	lk_process_table = NULL;
+   }
+#endif
+	
 	/*
 	 * We don't take p_lock in here because we must have the only
 	 * reference to this structure. (Otherwise it would be
@@ -183,8 +205,6 @@ proc_destroy(struct proc *proc)
 	}
 	V(proc_count_mutex);
 #endif // UW
-	
-
 }
 
 /*
@@ -270,6 +290,21 @@ proc_create_runprogram(const char *name)
 	proc_count++;
 	V(proc_count_mutex);
 #endif // UW
+	
+#if OPT_A2
+  	spinlock_acquire(&curproc->p_lock);
+  	// assign pid for the first program
+	static volatile pid_t pid_count = PID_MIN;
+  	proc->pid = pid_count++;
+  	// setup cv
+  	proc->cv_waitpid = cv_create(name);
+	// create process_table
+	if (! process_table) {
+	  process_table = array_create();
+	  lk_process_table = lock_create(curproc->p_name);
+	}
+  	spinlock_release(&curproc->p_lock);
+#endif
 
 	return proc;
 }
