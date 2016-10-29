@@ -77,6 +77,9 @@ struct semaphore *no_proc_sem;
 static volatile pid_t pid_count = PID_MIN;
 
 void save_process_status(struct proc* new, struct proc* parent) {
+   KASSERT(lock_do_i_hold(lk_process_table));
+   KASSERT(spinlock_do_i_hold(&new->p_lock));
+   if (parent) { KASSERT(spinlock_do_i_hold(&parent->p_lock)); }
    struct process_status* ps = kmalloc(sizeof(struct process_status));
    ps->pid = new->pid;
    ps->parent = parent ? parent->pid : 0;
@@ -88,6 +91,7 @@ void save_process_status(struct proc* new, struct proc* parent) {
 }
 
 struct process_status* get_process_status(pid_t pid) {
+   KASSERT(lock_do_i_hold(lk_process_table));
    unsigned len = array_num(process_table);
    for (unsigned i = 0; i < len; i++) {
       struct process_status* ps = array_get(process_table, i);
@@ -100,6 +104,7 @@ struct process_status* get_process_status(pid_t pid) {
 }
 
 void process_status_destroy(struct process_status* ps) {
+   KASSERT(lock_do_i_hold(lk_process_table));
    ps->pid = 0;
    ps->parent = 0;
    ps->valid = 0;
@@ -318,7 +323,7 @@ proc_create_runprogram(const char *name)
 
 #if OPT_A2
    P(proc_count_mutex);
-   spinlock_acquire(&curproc->p_lock);
+   spinlock_acquire(&proc->p_lock);
    // assign pid for the first program
    KASSERT(proc);
    proc->pid = pid_count;
@@ -326,12 +331,14 @@ proc_create_runprogram(const char *name)
    // create process_table
    if (proc_count == 0) {
       process_table = array_create();
-      lk_process_table = lock_create(curproc->p_name);
+      lk_process_table = lock_create("");
+      lock_acquire(lk_process_table);
       save_process_status(proc, 0);
+      lock_release(lk_process_table);
       KASSERT(proc->pid == 2);
    }
    pid_count++;
-   spinlock_release(&curproc->p_lock);
+   spinlock_release(&proc->p_lock);
    V(proc_count_mutex);
 #endif
 

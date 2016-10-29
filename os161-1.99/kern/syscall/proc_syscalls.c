@@ -229,7 +229,11 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
       debug();
       panic("die");
    }
+   spinlock_acquire(&curproc->p_lock);
+   spinlock_acquire(&proc->p_lock);
    save_process_status(proc, curproc);
+   spinlock_release(&proc->p_lock);
+   spinlock_release(&curproc->p_lock);
    lock_release(lk_process_table);
    return 0;
 }
