@@ -13,6 +13,7 @@
 #include "opt-A2.h"
 #if OPT_A2
 #include "debug.h"
+#include "limits.h"
 #endif 
 
 /* this implementation of sys__exit does not do anything with the exit code */
@@ -198,22 +199,22 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
       spinlock_release(&curproc->p_lock);
       return -1;
    };
+   KASSERT(proc->pid >= PID_MIN);
    *rv = proc->pid;
    spinlock_release(&curproc->p_lock);
-   KASSERT(proc->pid > 0);
-   lock_acquire(lk_process_table);
-   if (proc->pid < 0) {
-      kprintf("proc->pid should be %d but got %d", *rv, proc->pid);
-      debug();
-      panic("die");
-   }
+   
    spinlock_acquire(&curproc->p_lock);
    const pid_t curpid = curproc->pid;
    spinlock_release(&curproc->p_lock);
+   
+   lock_acquire(lk_process_table);
    spinlock_acquire(&proc->p_lock);
+   
    save_process_status(proc, curpid);
+   
    spinlock_release(&proc->p_lock);
    lock_release(lk_process_table);
+   
    return 0;
 }
 

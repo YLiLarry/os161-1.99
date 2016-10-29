@@ -323,24 +323,25 @@ proc_create_runprogram(const char *name)
 #endif // UW
 
 #if OPT_A2
+   
    P(proc_count_mutex);
+   const unsigned cur_proc_count = proc_count;
+   V(proc_count_mutex);
+   
    spinlock_acquire(&proc->p_lock);
-   // assign pid for the first program
-   KASSERT(proc);
-   proc->pid = pid_count;
-   KASSERT(proc->pid > 0);
    // create process_table
-   if (proc_count == 0) {
+   if (cur_proc_count == 0) {
+      proc->pid = PID_MIN;
       process_table = array_create();
       lk_process_table = lock_create("");
       lock_acquire(lk_process_table);
       save_process_status(proc, 0);
       lock_release(lk_process_table);
-      KASSERT(proc->pid == 2);
+   } else {
+      pid_count++;
+      proc->pid = pid_count;
    }
-   pid_count++;
    spinlock_release(&proc->p_lock);
-   V(proc_count_mutex);
 #endif
 
 #ifdef UW
