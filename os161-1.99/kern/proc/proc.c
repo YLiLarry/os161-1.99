@@ -77,14 +77,13 @@ struct semaphore *no_proc_sem;
 #if OPT_A2
 static volatile pid_t pid_count = PID_MIN;
 
-void save_process_status(struct proc* new, struct proc* parent) {
+void save_process_status(struct proc* new, pid_t parent) {
    KASSERT(lock_do_i_hold(lk_process_table));
    KASSERT(spinlock_do_i_hold(&new->p_lock));
-   if (parent) { KASSERT(spinlock_do_i_hold(&parent->p_lock)); }
    struct process_status* ps = kmalloc(sizeof(struct process_status));
    new->ps = ps;
    ps->pid = new->pid;
-   ps->parent = parent ? parent->pid : 0;
+   ps->parent = parent;
    ps->valid = true;
    ps->process = new;
    ps->exitcode = -1;
