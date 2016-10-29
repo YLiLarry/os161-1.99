@@ -1,0 +1,27 @@
+#!/bin/bash
+kernel1=/u/cs350/cs350_build_results/1/y667li/root/kernel
+kernel2=~/cs350-os161/root/kernel
+config=~/cs350-os161/root/sys161.conf
+sys() {
+  pushd ~/cs350-os161/root/ && sys161 -c $config $kernel2 $1; popd
+}
+sysw() {
+  pushd ~/cs350-os161/root/ && sys161 -w kernel $1; popd
+}
+tf=$(mktemp)
+i=500
+while [ $i -gt 0 ]; do
+   sysw "$1" &> "$tf"
+   x=`egrep -i $2 $tf`
+   if [ "$x" != "" ]; then
+      cat $tf
+      echo "error!"
+      echo "log: $tf"
+      exit 1
+   fi
+   ((i--))
+   cat $tf 1>&2
+   echo "$i finished. $1 -- `date`. $tf"
+done
+rm "$tf"
+

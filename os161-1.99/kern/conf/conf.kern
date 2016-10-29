@@ -443,6 +443,7 @@ file		test/fstest.c
 optfile net	test/nettest.c
 # UW Mod
 file    test/uw-tests.c
+file    test/debug.c
 
 
 # UW options for different assignments

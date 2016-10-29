@@ -11,32 +11,10 @@
 #include <copyinout.h>
 #include <synch.h>
 #include "opt-A2.h"
-
 #if OPT_A2
-/* process related stuff */
+#include "debug.h"
+#endif 
 
-static void debug() {
-   KASSERT(lk_process_table);
-   KASSERT(process_table);
-   kprintf("newtable: %d", array_num(process_table));
-   for (unsigned i = 0; i < array_num(process_table); i++) {
-      struct process_status* a = array_get(process_table, i);
-      struct process_status* p = get_process_status(a->parent);
-      kprintf("(%d,%d) ", a->pid, a->parent);
-      KASSERT(!p || a->parent == p->pid);
-   }
-   kprintf("\n");
-}
-
-static void debug_status(struct process_status* ps) {
-   kprintf("process_status: pid %d, parent %d, valid %d, exitcode %d\n", ps->pid, ps->parent, ps->valid, ps->exitcode);
-}
-
-static void die() {
-   panic("die\n");
-}
-
-#endif
 /* this implementation of sys__exit does not do anything with the exit code */
 /* this needs to be fixed to get exit() and waitpid() working properly */
 

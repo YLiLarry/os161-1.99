@@ -52,6 +52,7 @@
 #include <kern/fcntl.h>
 #if OPT_A2
 #include <limits.h>
+#include <debug.h>
 #endif
 
 /*
