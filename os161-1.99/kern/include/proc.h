@@ -51,14 +51,17 @@ struct semaphore;
 struct process_status {
   pid_t pid;
   pid_t parent;
-  unsigned parent_index;
   bool valid;
   int exitcode;
+  struct cv* cv_waitpid;
   struct proc* process;
 };
 
 struct array* process_table;
 struct lock* lk_process_table;
+void save_process_status(struct proc* new, struct proc* parent);
+struct process_status* get_process_status(pid_t pid);
+void process_status_destroy(struct process_status* ps);
 #endif
 
 /*
@@ -87,8 +90,6 @@ struct proc {
 	/* add more material here as needed */
 #if OPT_A2
    pid_t pid;
-   struct cv* cv_waitpid;
-   struct process_status* ps;
 #endif
    
 };

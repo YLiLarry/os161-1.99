@@ -15,27 +15,25 @@
 #if OPT_A2
 /* process related stuff */
 
-
-static void save_process_status(struct proc* new, struct proc* parent) {
-  struct process_status* ps = kmalloc(sizeof(struct process_status));
-  ps->pid = new->pid;
-  ps->parent = parent->pid;
-  ps->valid = true;
-  ps->process = new;
-  new->ps = ps;
-  array_add(process_table, ps, NULL);
+static void debug() {
+  KASSERT(lk_process_table);
+  KASSERT(process_table);
+  kprintf("newtable: %d", array_num(process_table));
+  for (unsigned i = 0; i < array_num(process_table); i++) {
+    struct process_status* a = array_get(process_table, i);
+    struct process_status* p = get_process_status(a->parent);
+    kprintf("(%d,%d) ", a->pid, a->parent);
+    KASSERT(!p || a->parent == p->pid);
+  }
+  kprintf("\n");
 }
 
-static struct process_status* get_process_status(pid_t pid) {
-  unsigned len = array_num(process_table);
-  for (unsigned i = 0; i < len; i++) {
-    struct process_status* ps = array_get(process_table, i); 
-    // wake parents
-    if (ps && ps->pid == pid) {
-      return ps;
-    }
-  }
-  return NULL;
+static void debug_status(struct process_status* ps) {
+  kprintf("process_status: pid %d, parent %d, valid %d, exitcode %d\n", ps->pid, ps->parent, ps->valid, ps->exitcode);
+}
+
+static void die() {
+  panic("die\n");
 }
 
 #endif
@@ -49,24 +47,32 @@ void sys__exit(int exitcode) {
   /* for now, just include this to keep the compiler from complaining about
      an unused variable */
 #if OPT_A2
+  KASSERT(lk_process_table);
+  KASSERT(process_table);
   lock_acquire(lk_process_table);
   // remove process status
   for (unsigned i = 0; i < array_num(process_table); i++) {
     struct process_status* ps = array_get(process_table, i); 
     KASSERT(ps);
+    // set self
     if (ps->pid == curproc->pid) {
-      // wake parents
-      KASSERT(ps->process);
-      cv_broadcast(ps->process->cv_waitpid, lk_process_table);
-      // set self
+      KASSERT(exitcode >= 0);
       ps->exitcode = _MKWAIT_EXIT(exitcode);
       ps->valid = false;
       ps->process = NULL;
+      // wake parents
+      cv_broadcast(ps->cv_waitpid, lk_process_table);
     }
     // remove all children
-    if (ps->parent == curproc->pid) {
-      kfree(ps);
+    else if (ps->parent == curproc->pid) {
+      if (ps->valid) {
+        kprintf("%d exits, its child %d is still valid\n", curproc->pid, ps->pid);
+        debug_status(get_process_status(ps->pid));
+        die();
+      };
+      process_status_destroy(ps);
       array_remove(process_table, i);
+      i--;
     }
   }
   lock_release(lk_process_table);
@@ -128,23 +134,35 @@ sys_waitpid(pid_t pid,
 #if OPT_A2
   int err = 0;
   (void)options;
+  KASSERT(lk_process_table);
+  KASSERT(process_table);
   lock_acquire(lk_process_table);
   struct process_status* st = get_process_status(pid);
   // process exists
   if (st) {
     // if process is a child
+    KASSERT(st->parent);
+    KASSERT(curproc->pid);
     if (st->parent == curproc->pid) {
       // if process is running
-      while (st->valid) {
-        cv_wait(curproc->cv_waitpid, lk_process_table);
+      if (st->valid) {
+        // kprintf("%d asleep\n", curproc->pid);
+        cv_wait(st->cv_waitpid, lk_process_table);
+        // kprintf("%d woke\n", curproc->pid);
       }
       // child exits
+      if (WEXITSTATUS(st->exitcode) < 0) {
+        kprintf("%d exits with %d\n", st->pid, st->exitcode);
+        debug_status(get_process_status(st->pid));
+        die();
+      };
       err = copyout(&(st->exitcode),status,sizeof(int));
       if (err) {return err;}
       *retval = st->pid;
       lock_release(lk_process_table);
       return 0;
     }
+    // debug();
     // if process isn't a child
     lock_release(lk_process_table);
     return -1;
@@ -185,6 +203,8 @@ sys_waitpid(pid_t pid,
 /* Fork related stuff */
 
 int sys_fork(struct trapframe* tf, pid_t* rv) {
+  KASSERT(lk_process_table);
+  KASSERT(process_table);
   struct proc* proc = proc_create_runprogram(curproc->p_name);
   if (! proc) {
     return -1;
@@ -202,7 +222,13 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
   };
   *rv = proc->pid;
   spinlock_release(&curproc->p_lock);
+  KASSERT(proc->pid > 0);
   lock_acquire(lk_process_table);
+  if (proc->pid < 0) {
+    kprintf("proc->pid should be %d but got %d", *rv, proc->pid);
+    debug();
+    panic("die");
+  }
   save_process_status(proc, curproc);
   lock_release(lk_process_table);
   return 0;

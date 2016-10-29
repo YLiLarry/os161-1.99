@@ -201,6 +201,7 @@ lock_destroy(struct lock *lock)
 void
 lock_acquire(struct lock *lock)
 {
+        KASSERT(lock);
         // Write this
         spinlock_acquire(lock->spinlock);
         // Check dead lock
@@ -219,6 +220,7 @@ lock_acquire(struct lock *lock)
 void
 lock_release(struct lock *lock)
 {
+        KASSERT(lock);
         // Write this
         spinlock_acquire(lock->spinlock);
         // Check ownership
