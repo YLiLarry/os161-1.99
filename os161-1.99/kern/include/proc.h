@@ -54,12 +54,11 @@ struct process_status {
   bool valid;
   int exitcode;
   struct cv* cv_waitpid;
-  struct proc* process;
 };
 
 struct array* process_table;
 struct lock* lk_process_table;
-void save_process_status(struct proc* new, pid_t parent);
+void save_process_status(pid_t new, pid_t parent);
 struct process_status* get_process_status(pid_t pid);
 void process_status_destroy(struct process_status* ps);
 #endif

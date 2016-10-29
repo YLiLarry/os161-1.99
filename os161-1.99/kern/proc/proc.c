@@ -77,17 +77,14 @@ struct semaphore *no_proc_sem;
 #if OPT_A2
 static volatile pid_t pid_count = PID_MIN;
 
-void save_process_status(struct proc* new, pid_t parent) {
+void save_process_status(pid_t new, pid_t parent) {
    KASSERT(lock_do_i_hold(lk_process_table));
-   KASSERT(spinlock_do_i_hold(&new->p_lock));
    struct process_status* ps = kmalloc(sizeof(struct process_status));
-   new->ps = ps;
-   ps->pid = new->pid;
+   ps->pid = new;
    ps->parent = parent;
    ps->valid = true;
-   ps->process = new;
    ps->exitcode = -1;
-   ps->cv_waitpid = cv_create(new->p_name);
+   ps->cv_waitpid = cv_create("");
    array_add(process_table, ps, NULL);
 }
 
@@ -335,7 +332,7 @@ proc_create_runprogram(const char *name)
       process_table = array_create();
       lk_process_table = lock_create("");
       lock_acquire(lk_process_table);
-      save_process_status(proc, 0);
+      save_process_status(proc->pid, 0);
       lock_release(lk_process_table);
    } else {
       pid_count++;

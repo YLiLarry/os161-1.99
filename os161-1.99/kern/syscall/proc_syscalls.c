@@ -38,7 +38,6 @@ void sys__exit(int exitcode) {
          KASSERT(exitcode >= 0);
          ps->exitcode = _MKWAIT_EXIT(exitcode);
          ps->valid = false;
-         ps->process = NULL;
          // wake parents
          cv_broadcast(ps->cv_waitpid, lk_process_table);
       }
@@ -203,16 +202,16 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
    *rv = proc->pid;
    spinlock_release(&curproc->p_lock);
    
+   spinlock_acquire(&proc->p_lock);
+   const pid_t newpid = proc->pid;
+   spinlock_release(&proc->p_lock);
+   
    spinlock_acquire(&curproc->p_lock);
    const pid_t curpid = curproc->pid;
    spinlock_release(&curproc->p_lock);
    
    lock_acquire(lk_process_table);
-   spinlock_acquire(&proc->p_lock);
-   
-   save_process_status(proc, curpid);
-   
-   spinlock_release(&proc->p_lock);
+   save_process_status(newpid, curpid);
    lock_release(lk_process_table);
    
    return 0;
