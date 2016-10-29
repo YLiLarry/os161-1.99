@@ -82,6 +82,7 @@ void save_process_status(struct proc* new, struct proc* parent) {
    KASSERT(spinlock_do_i_hold(&new->p_lock));
    if (parent) { KASSERT(spinlock_do_i_hold(&parent->p_lock)); }
    struct process_status* ps = kmalloc(sizeof(struct process_status));
+   new->ps = ps;
    ps->pid = new->pid;
    ps->parent = parent ? parent->pid : 0;
    ps->valid = true;
