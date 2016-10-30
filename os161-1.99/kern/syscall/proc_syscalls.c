@@ -194,7 +194,7 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
    }
    
    lock_acquire(lk_process_table);
-   spinlock_acquire(&curproc->p_lock);
+   // spinlock_acquire(&curproc->p_lock);
    struct trapframe* childtf = kmalloc(sizeof(struct trapframe));
    *childtf = *tf;
    if (thread_fork(proc->p_name, proc, &enter_forked_process, childtf, 1)) {
@@ -205,15 +205,15 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
    };
    KASSERT(proc->pid >= PID_MIN);
    *rv = proc->pid;
-   spinlock_release(&curproc->p_lock);
+   // spinlock_release(&curproc->p_lock);
    
    spinlock_acquire(&proc->p_lock);
    const pid_t newpid = proc->pid;
    spinlock_release(&proc->p_lock);
    
-   spinlock_acquire(&curproc->p_lock);
+   // spinlock_acquire(&curproc->p_lock);
    const pid_t curpid = curproc->pid;
-   spinlock_release(&curproc->p_lock);
+   // spinlock_release(&curproc->p_lock);
    
    save_process_status(newpid, curpid);
    lock_release(lk_process_table);
