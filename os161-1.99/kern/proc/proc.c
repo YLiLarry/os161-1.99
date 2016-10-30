@@ -325,7 +325,6 @@ proc_create_runprogram(const char *name)
    const unsigned cur_proc_count = proc_count;
    V(proc_count_mutex);
    
-   spinlock_acquire(&proc->p_lock);
    // create process_table
    if (cur_proc_count == 0) {
       proc->pid = PID_MIN;
@@ -340,7 +339,6 @@ proc_create_runprogram(const char *name)
       proc->pid = pid_count;
       lock_release(lk_process_table);
    }  
-   spinlock_release(&proc->p_lock);
 #endif
 
 #ifdef UW
