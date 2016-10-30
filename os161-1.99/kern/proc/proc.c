@@ -335,9 +335,11 @@ proc_create_runprogram(const char *name)
       save_process_status(proc->pid, 0);
       lock_release(lk_process_table);
    } else {
+      lock_acquire(lk_process_table);
       pid_count++;
       proc->pid = pid_count;
-   }
+      lock_release(lk_process_table);
+   }  
    spinlock_release(&proc->p_lock);
 #endif
 

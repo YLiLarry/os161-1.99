@@ -187,6 +187,7 @@ enter_forked_process(void* parent_tf, unsigned long nargs)
 {
    // copy parent's trap frame as tf
    struct trapframe tf = *(struct trapframe*)parent_tf;
+   kfree(parent_tf);
    // modify trap frame
    tf.tf_epc += 4; // advance pc
    tf.tf_v0 = 0;

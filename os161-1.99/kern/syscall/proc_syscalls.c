@@ -12,6 +12,7 @@
 #include <synch.h>
 #include "opt-A2.h"
 #if OPT_A2
+#include <mips/trapframe.h>
 #include "debug.h"
 #include "limits.h"
 #endif 
@@ -187,14 +188,18 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
    if (! proc) {
       return -1;
    }
-   spinlock_acquire(&curproc->p_lock);
-   if (as_copy(curproc->p_addrspace, &proc->p_addrspace)) {
+   if (as_copy(curproc_getas(), &(proc->p_addrspace))) {
       proc_destroy(proc);
-      spinlock_release(&curproc->p_lock);
       return -1;
    }
-   if (thread_fork(proc->p_name, proc, &enter_forked_process, tf, 1)) {
+   
+   lock_acquire(lk_process_table);
+   spinlock_acquire(&curproc->p_lock);
+   struct trapframe* childtf = kmalloc(sizeof(struct trapframe));
+   *childtf = *tf;
+   if (thread_fork(proc->p_name, proc, &enter_forked_process, childtf, 1)) {
       proc_destroy(proc);
+      kfree(childtf);
       spinlock_release(&curproc->p_lock);
       return -1;
    };
@@ -210,7 +215,6 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
    const pid_t curpid = curproc->pid;
    spinlock_release(&curproc->p_lock);
    
-   lock_acquire(lk_process_table);
    save_process_status(newpid, curpid);
    lock_release(lk_process_table);
    

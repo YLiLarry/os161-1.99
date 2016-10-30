@@ -88,7 +88,7 @@ struct proc {
 
 	/* add more material here as needed */
 #if OPT_A2
-   pid_t pid;
+   volatile pid_t pid;
    struct process_status* ps;
 #endif
    
