@@ -112,7 +112,12 @@ sys_waitpid(pid_t pid,
 {
 #if OPT_A2
    int err = 0;
-   (void)options;
+   if (! status) {
+      return EFAULT;
+   }
+   if (options != 0) {
+      return EINVAL;
+   }
    KASSERT(lk_process_table);
    KASSERT(process_table);
    lock_acquire(lk_process_table);
@@ -136,7 +141,10 @@ sys_waitpid(pid_t pid,
             die();
          };
          err = copyout(&(st->exitcode), status, sizeof(int));
-         if (err) {return err;}
+         if (err) {
+            lock_release(lk_process_table);
+            return err;
+         }
          *retval = st->pid;
          lock_release(lk_process_table);
          return 0;
@@ -144,11 +152,11 @@ sys_waitpid(pid_t pid,
       // debug();
       // if process isn't a child
       lock_release(lk_process_table);
-      return -1;
+      return ECHILD;
    }
    // process doesn't exist
    lock_release(lk_process_table);
-   return -1;
+   return ESRCH;
 #else
    int exitstatus;
    int result;
@@ -186,25 +194,27 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
    KASSERT(process_table);
    struct proc* proc = proc_create_runprogram(curproc->p_name);
    if (! proc) {
-      return -1;
+      return ENPROC;
    }
    if (as_copy(curproc_getas(), &(proc->p_addrspace))) {
       proc_destroy(proc);
-      return -1;
+      return ENOMEM;
    }
    
    lock_acquire(lk_process_table);
    struct trapframe* childtf = kmalloc(sizeof(struct trapframe));
+   if (! childtf) {
+      proc_destroy(proc);
+      return ENOMEM;
+   }
    *childtf = *tf;
    if (thread_fork("", proc, &enter_forked_process, childtf, 1)) {
       proc_destroy(proc);
       kfree(childtf);
-      return -1;
+      return EMPROC;
    };
    KASSERT(proc->pid >= PID_MIN);
    *rv = proc->pid;
-   
-   save_process_status(proc->pid, curproc->pid);
    lock_release(lk_process_table);
    
    return 0;
