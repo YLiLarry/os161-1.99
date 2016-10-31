@@ -168,7 +168,9 @@ proc_destroy(struct proc *proc)
    // if was last elem, destroy table
    P(proc_count_mutex);
    if (proc_count == 0) {
-      for (unsigned i = 0; i < array_num(process_table); i++) {
+      lock_acquire(lk_process_table);
+      while (array_num(process_table) > 0) {
+         unsigned i = array_num(process_table) - 1;
          struct process_status* ps = array_get(process_table, i);
          KASSERT(ps);
          KASSERT(ps->pid == proc->pid || ps->parent == proc->pid);
@@ -176,6 +178,7 @@ proc_destroy(struct proc *proc)
          array_remove(process_table, i);
       }
       array_destroy(process_table);
+      lock_release(lk_process_table);
       lock_destroy(lk_process_table);
       process_table = NULL;
       lk_process_table = NULL;
@@ -342,7 +345,6 @@ proc_create_runprogram(const char *name)
          }
       }
       save_process_status(proc->pid, curproc->pid);
-      debug();
       lock_release(lk_process_table);
    }  
 #endif
