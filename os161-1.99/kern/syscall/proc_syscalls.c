@@ -44,11 +44,6 @@ void sys__exit(int exitcode) {
       }
       // remove all children
       else if (ps->parent == curproc->pid) {
-         if (ps->valid) {
-            kprintf("%d exits, its child %d is still valid\n", curproc->pid, ps->pid);
-            debug_status(get_process_status(ps->pid));
-            die();
-         };
          process_status_destroy(ps);
          array_remove(process_table, i);
          i--;
@@ -134,12 +129,6 @@ sys_waitpid(pid_t pid,
             cv_wait(st->cv_waitpid, lk_process_table);
             // kprintf("%d woke\n", curproc->pid);
          }
-         // child exits
-         if (WEXITSTATUS(st->exitcode) < 0) {
-            kprintf("%d exits with %d\n", st->pid, st->exitcode);
-            debug_status(get_process_status(st->pid));
-            die();
-         };
          err = copyout(&(st->exitcode), status, sizeof(int));
          if (err) {
             lock_release(lk_process_table);
