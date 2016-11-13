@@ -4,5 +4,7 @@
 *.swp
 /os161-1.99/tags
 /os161-1.99/build/
+/test
+/testw
 /os161-1.99/kern/build
 /root/
