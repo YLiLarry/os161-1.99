@@ -44,6 +44,76 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+#include <copyinout.h>
+#include <limits.h>
+
+static int assign_ustack_space(unsigned long argc,
+                               char** argv,
+                               userptr_t* p_arg_string_ptrs,
+                               userptr_t* p_arg_strings,
+                               userptr_t* p_stack_top) {
+	char** arg_string_ptrs = (char**)(*p_arg_string_ptrs);
+	char* arg_strings = (char*)(*p_arg_strings);
+	char* stack_top = (char*)(*p_stack_top);
+	
+	/* find top of stack by counting backwards */
+	// yield string space
+	for (unsigned long i = 1; i <= argc; i++) {
+		size_t space = strlen(argv[argc - i]) + 1; // include null
+		// kprintf("stack_top %p -= space %d -> ", stack_top, space);
+		stack_top -= space * 4;
+		// kprintf("%p\n", stack_top);
+	}
+	// yield null
+	*stack_top = 0;
+	stack_top -= 4; 
+	
+	// yield ptr space
+	// kprintf("stack_top %p -= argc %lu -> ", stack_top, argc);
+	stack_top -= argc * 4; 
+	// kprintf("%p\n", stack_top);
+	
+	
+	// grow forwards
+	arg_string_ptrs = (char**)(stack_top + 4);
+	arg_strings = (char*)(stack_top + 4 + argc * 4);
+	// yield null
+	arg_strings += 4;
+	
+	// kprintf("arg_string_ptrs %p\n", arg_string_ptrs);
+	// kprintf("arg_strings %p\n", arg_strings);
+	
+	KASSERT(stack_top);
+	KASSERT(arg_strings);
+	KASSERT(arg_string_ptrs);
+	
+	char* stack_bottom = arg_strings;
+	// kprintf("stack_bottom %p\n", stack_bottom);
+  	for (unsigned i = 0; i < argc; i++) {
+		// copy pointers
+		arg_string_ptrs[i] = stack_bottom;
+		// copy strings
+		size_t sizegot = 0;
+		// kprintf("argv[%d] = %s, sizegot %d\n", i, argv[i], sizegot);
+		int error = copyoutstr(argv[i], (userptr_t)stack_bottom, ARG_MAX, &sizegot);
+		if (error) {
+			return error;
+		};
+		// kprintf("stack_bottom %p += sizegot %d + 4 -> ", stack_bottom, sizegot);
+		stack_bottom += 4 * sizegot; // null char
+		// kprintf("%p\n", stack_bottom);
+  	}
+  	
+  	KASSERT((userptr_t)(stack_bottom - 4) == *p_stack_top);
+  	
+	*p_arg_string_ptrs = (userptr_t)arg_string_ptrs;
+	*p_arg_strings = (userptr_t)arg_strings;
+	*p_stack_top = (userptr_t)stack_top; 
+	
+	// kprintf("Returning %p\n", stack_top);
+	
+	return 0;
+}
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -52,7 +122,7 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname)
+runprogram(char *progname, unsigned long argc, char** argv)
 {
 	struct addrspace *as;
 	struct vnode *v;
@@ -97,12 +167,24 @@ runprogram(char *progname)
 		return result;
 	}
 
-	/* Warp to user mode. */
-	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-			  stackptr, entrypoint);
+	// put argv pointers in place
+	// put argv strings in place
+	// stackptr ready
+	userptr_t arg_string_ptrs, arg_string;
+	int err = assign_ustack_space(argc, argv, &arg_string_ptrs, &arg_string, (userptr_t*)(&stackptr));
+	if (err) {
+		return err;
+	}
+
+	// kprintf("got %lu %s %p\n", argc, ((char**)arg_string_ptrs)[0], (char*)stackptr);
 	
+	/* Warp to user mode. */
+	enter_new_process(argc /*arg count*/,
+                     arg_string_ptrs /*userspace addr of argv*/,
+                     stackptr,
+                     entrypoint);
+
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
 	return EINVAL;
 }
-
