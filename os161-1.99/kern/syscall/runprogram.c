@@ -47,14 +47,20 @@
 #include <copyinout.h>
 #include <limits.h>
 
-static int assign_ustack_space(unsigned long argc,
-                               char** argv,
-                               userptr_t* p_arg_string_ptrs,
-                               userptr_t* p_arg_strings,
-                               userptr_t* p_stack_top) {
+int assign_ustack_space(unsigned long argc,
+                        char** argv,
+                        userptr_t* p_arg_string_ptrs,
+                        userptr_t* p_arg_strings,
+                        userptr_t* p_stack_top) {
 	char** arg_string_ptrs = (char**)(*p_arg_string_ptrs);
 	char* arg_strings = (char*)(*p_arg_strings);
 	char* stack_top = (char*)(*p_stack_top);
+	
+	// kprintf("Received argc = %lu, args = ", argc);
+	// for (unsigned i = 0; i < argc; i++) {
+	// 	kprintf("%s ", argv[i]);
+	// }
+	// kprintf("\n");
 	
 	/* find top of stack by counting backwards */
 	// yield string space
@@ -140,7 +146,7 @@ runprogram(char *progname, unsigned long argc, char** argv)
 
 	/* Create a new address space. */
 	as = as_create();
-	if (as ==NULL) {
+	if (as == NULL) {
 		vfs_close(v);
 		return ENOMEM;
 	}

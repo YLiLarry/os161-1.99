@@ -13,8 +13,11 @@
 #include "opt-A2.h"
 #if OPT_A2
 #include <mips/trapframe.h>
-#include "debug.h"
-#include "limits.h"
+#include <debug.h>
+#include <limits.h>
+#include <vfs.h>
+#include <kern/fcntl.h>
+#include <array.h>
 #endif 
 
 /* this implementation of sys__exit does not do anything with the exit code */
@@ -207,6 +210,123 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
    lock_release(lk_process_table);
    
    return 0;
+}
+
+// copy args to kernel heap
+static int copy_args(userptr_t u_progname, userptr_t u_args, 
+                     unsigned* p_argc, char** p_progname, char*** p_args) {
+   /* Parse u_args */
+   unsigned argc = 0;
+   char* progname;
+   char** args;
+      
+   // count args
+   while (((char**)u_args)[argc]) {
+      argc++;
+   }
+   
+   unsigned sl;
+   // copy program name
+   sl = strlen((char*)u_progname);
+   progname = kmalloc((sl + 1) * sizeof(char));
+   copyinstr(u_progname, progname, PATH_MAX, NULL);
+   // kprintf("sys_execv %s ", progname);
+   
+   // alloc string array
+   args = kmalloc(argc * sizeof(char*));
+   // copy pointer to each str
+   for (unsigned i = 0; i < argc; i++) {
+      sl = strlen(((char**)u_args)[i]);
+      args[i] = kmalloc((sl + 1) * sizeof(char));
+      copyinstr((userptr_t)(((char**)u_args)[i]), args[i], ARG_MAX, NULL);
+      // kprintf("%s ", args[i]);
+   }
+   // kprintf("argc = %d\n", argc);
+   
+   *p_argc = argc;
+   *p_progname = progname;
+   *p_args = args;
+   
+   return 0;
+}
+
+static void free_args(unsigned argc, char* progname, char** args) {
+   kfree(progname);
+   for (unsigned i = 0; i < argc; i++) {
+      kfree(args[i]);
+   } 
+   kfree(args);
+}
+
+int sys_execv(userptr_t u_progname, userptr_t u_args, int* retval) {
+   int err;
+
+   unsigned argc = 0;
+   char* progname;
+   char** args;
+   
+   copy_args(u_progname, u_args, &argc, &progname, &args);
+   
+   // kprintf("\nsys_execv %s %d ", progname, argc);
+   // for (unsigned i = 0; i < argc; i++) {
+   //    kprintf("%s ", args[i]);  
+   // }
+   // kprintf("\n");
+   
+   // create new addrspace
+   struct addrspace* as = as_create();
+   if (! as) {
+      return ENOMEM;
+   }
+   
+   // open program
+   struct vnode *v;
+   err = vfs_open(progname, O_RDONLY, 0, &v);
+   if (err) {
+      return err;
+   }
+   
+   KASSERT(args[0]);
+   as_destroy(curproc_getas());
+   curproc_setas(as);
+   as_activate();
+   
+   // load program
+   vaddr_t entrypoint;
+   err = load_elf(v, &entrypoint);
+   vfs_close(v);
+   if (err) {
+      return err;
+   }
+   
+   vaddr_t stackptr;
+   err = as_define_stack(as, &stackptr);
+   if (err) {
+      return err;
+   }
+   KASSERT(args[0]);
+   
+   // put args pointers in place
+   // put args strings in place
+   // stackptr ready
+   userptr_t arg_string_ptrs, arg_string;
+   err = assign_ustack_space(argc, args, &arg_string_ptrs, &arg_string, (userptr_t*)(&stackptr));
+   if (err) {
+      return err;
+   }
+   
+   // free args
+   free_args(argc, progname, args);
+   
+   /* Warp to user mode. */
+   enter_new_process(argc /*arg count*/,
+                     arg_string_ptrs /*userspace addr of args*/,
+                     stackptr,
+                     entrypoint);
+   
+   // should not return
+   *retval = -1;
+   return -1;
 }
 
 #endif

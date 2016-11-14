@@ -69,6 +69,12 @@ int sys_getpid(pid_t *retval);
 int sys_waitpid(pid_t pid, userptr_t status, int options, pid_t *retval);
 #if OPT_A2
 int sys_fork(struct trapframe*tf, pid_t *retval);
+int sys_execv(userptr_t progname, userptr_t args, int* retval);
+int assign_ustack_space(unsigned long argc,
+                        char** argv,
+                        userptr_t* p_arg_string_ptrs,
+                        userptr_t* p_arg_strings,
+                        userptr_t* p_stack_top);
 #endif // OPT_A2
 #endif // UW
 
