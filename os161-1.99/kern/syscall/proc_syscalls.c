@@ -215,6 +215,9 @@ int sys_fork(struct trapframe* tf, pid_t* rv) {
 // copy args to kernel heap
 static int copy_args(userptr_t u_progname, userptr_t u_args, 
                      unsigned* p_argc, char** p_progname, char*** p_args) {
+   
+   int err;
+   
    /* Parse u_args */
    unsigned argc = 0;
    char* progname;
@@ -229,16 +232,30 @@ static int copy_args(userptr_t u_progname, userptr_t u_args,
    // copy program name
    sl = strlen((char*)u_progname);
    progname = kmalloc((sl + 1) * sizeof(char));
-   copyinstr(u_progname, progname, PATH_MAX, NULL);
+   err = copyinstr(u_progname, progname, PATH_MAX, NULL);
+   if (err) {
+      return err;
+   }
    // kprintf("sys_execv %s ", progname);
    
    // alloc string array
    args = kmalloc(argc * sizeof(char*));
+   if ((! args) && (argc > 0)) {
+      return ENOMEM;
+   }
+   
    // copy pointer to each str
    for (unsigned i = 0; i < argc; i++) {
       sl = strlen(((char**)u_args)[i]);
       args[i] = kmalloc((sl + 1) * sizeof(char));
-      copyinstr((userptr_t)(((char**)u_args)[i]), args[i], ARG_MAX, NULL);
+      if ((! args[i]) && (sl > 0)) {
+         return ENOMEM;
+      }
+      
+      err = copyinstr((userptr_t)(((char**)u_args)[i]), args[i], ARG_MAX, NULL);
+      if (err) {
+         return err;
+      }
       // kprintf("%s ", args[i]);
    }
    // kprintf("argc = %d\n", argc);
@@ -260,12 +277,16 @@ static void free_args(unsigned argc, char* progname, char** args) {
 
 int sys_execv(userptr_t u_progname, userptr_t u_args, int* retval) {
    int err;
+   *retval = 0;
 
    unsigned argc = 0;
    char* progname;
    char** args;
    
-   copy_args(u_progname, u_args, &argc, &progname, &args);
+   err = copy_args(u_progname, u_args, &argc, &progname, &args);
+   if (err) {
+      return err;
+   }
    
    // kprintf("\nsys_execv %s %d ", progname, argc);
    // for (unsigned i = 0; i < argc; i++) {
@@ -286,7 +307,6 @@ int sys_execv(userptr_t u_progname, userptr_t u_args, int* retval) {
       return err;
    }
    
-   KASSERT(args[0]);
    as_destroy(curproc_getas());
    curproc_setas(as);
    as_activate();
@@ -304,7 +324,6 @@ int sys_execv(userptr_t u_progname, userptr_t u_args, int* retval) {
    if (err) {
       return err;
    }
-   KASSERT(args[0]);
    
    // put args pointers in place
    // put args strings in place
@@ -325,7 +344,6 @@ int sys_execv(userptr_t u_progname, userptr_t u_args, int* retval) {
                      entrypoint);
    
    // should not return
-   *retval = -1;
    return -1;
 }
 
