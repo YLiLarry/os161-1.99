@@ -122,12 +122,13 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
 		/* We always create pages read-write, so we can't get this */
-		panic("dumbvm: got VM_FAULT_READONLY\n");
+			// panic("dumbvm: got VM_FAULT_READONLY\n");
+		    return 0;
 	    case VM_FAULT_READ:
 	    case VM_FAULT_WRITE:
-		break;
+			break;
 	    default:
-		return EINVAL;
+			return EINVAL;
 	}
 
 	if (curproc == NULL) {
@@ -190,7 +191,12 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 #if OPT_A3
 	ehi = faultaddress;
-	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+	// if it's the code segment, set read only by removing the dirty bit
+	if (faultaddress >= vbase1 && faultaddress < vtop1 && as->load_done) {
+		elo = paddr | TLBLO_VALID;
+	} else {
+		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+	}
 	tlb_random(ehi, elo);
 	(void)i;
 	splx(spl);
@@ -230,7 +236,8 @@ as_create(void)
 	as->as_pbase2 = 0;
 	as->as_npages2 = 0;
 	as->as_stackpbase = 0;
-
+	as->load_done = false;
+	
 	return as;
 }
 
@@ -348,7 +355,9 @@ as_prepare_load(struct addrspace *as)
 int
 as_complete_load(struct addrspace *as)
 {
-	(void)as;
+#if OPT_A3
+	as->load_done = true;
+#endif
 	return 0;
 }
 

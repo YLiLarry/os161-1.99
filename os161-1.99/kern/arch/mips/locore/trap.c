@@ -111,6 +111,10 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 	/*
 	 * You will probably want to change this.
 	 */
+	
+	sys__kill(sig);
+	
+	return;
 
 	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
 		code, sig, trapcodenames[code], epc, vaddr);
@@ -232,6 +236,7 @@ mips_trap(struct trapframe *tf)
 	switch (code) {
 	case EX_MOD:
 		if (vm_fault(VM_FAULT_READONLY, tf->tf_vaddr)==0) {
+	    	kill_curthread(tf->tf_epc, VM_FAULT_READONLY, tf->tf_vaddr);
 			goto done;
 		}
 		break;
