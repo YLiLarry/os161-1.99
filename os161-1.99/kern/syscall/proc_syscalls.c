@@ -85,6 +85,69 @@ void sys__exit(int exitcode) {
 }
 
 
+void sys__kill(int exitcode) {
+
+   struct addrspace *as;
+   struct proc *p = curproc;
+   /* for now, just include this to keep the compiler from complaining about
+      an unused variable */
+#if OPT_A2
+   KASSERT(lk_process_table);
+   KASSERT(process_table);
+   lock_acquire(lk_process_table);
+   // remove process status
+   for (unsigned i = 0; i < array_num(process_table); i++) {
+      struct process_status* ps = array_get(process_table, i);
+      KASSERT(ps);
+      // set self
+      if (ps->pid == curproc->pid) {
+         KASSERT(exitcode >= 0);
+         ps->exitcode = _MKWAIT_SIG(exitcode);
+         ps->valid = false;
+         // wake parents
+         cv_broadcast(ps->cv_waitpid, lk_process_table);
+      }
+      // remove all children
+      else if (ps->parent == curproc->pid) {
+         process_status_destroy(ps);
+         array_remove(process_table, i);
+         i--;
+      }
+   }
+   lock_release(lk_process_table);
+#else
+   (void)exitcode;
+#endif
+
+   DEBUG(DB_SYSCALL, "Syscall: _exit(%d)\n", exitcode);
+
+   KASSERT(curproc->p_addrspace != NULL);
+   as_deactivate();
+   /*
+    * clear p_addrspace before calling as_destroy. Otherwise if
+    * as_destroy sleeps (which is quite possible) when we
+    * come back we'll be calling as_activate on a
+    * half-destroyed address space. This tends to be
+    * messily fatal.
+    */
+   as = curproc_setas(NULL);
+   as_destroy(as);
+
+   /* detach this thread from its process */
+   /* note: curproc cannot be used after this call */
+   proc_remthread(curthread);
+
+   /* if this is the last user process in the system, proc_destroy()
+      will wake up the kernel menu thread */
+   proc_destroy(p);
+
+   thread_exit();
+   /* thread_exit() does not return, so we should never get here */
+   panic("return from thread_exit in sys_exit\n");
+}
+
+
+
 /* stub handler for getpid() system call                */
 int
 sys_getpid(pid_t *retval)
