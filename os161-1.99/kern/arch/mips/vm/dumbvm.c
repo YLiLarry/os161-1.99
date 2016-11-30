@@ -38,6 +38,8 @@
 #include <addrspace.h>
 #include <vm.h>
 #include "opt-A3.h"
+#include <array.h>
+
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -52,10 +54,30 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
-void
-vm_bootstrap(void)
-{
-	/* Do nothing. */
+static paddr_t MEM_START;
+static paddr_t MEM_END;
+static paddr_t CORE_MAP;
+static unsigned long MEM_BYTES; 
+static unsigned long NUM_PAGES; 
+static unsigned long CORE_MAP_SIZE;
+
+struct frame {
+   bool in_use;
+};
+
+void vm_bootstrap(void) {
+	/* Init core map */
+	// ram_getsize(&CORE_MAP, &MEM_END);
+	MEM_BYTES = MEM_END - CORE_MAP;
+	NUM_PAGES = MEM_BYTES / PAGE_SIZE;
+	CORE_MAP_SIZE = sizeof(struct frame) * NUM_PAGES;
+	MEM_START = CORE_MAP + CORE_MAP_SIZE;
+	kprintf("MEM_BYTES=%lu, NUM_PAGES=%lu, CORE_MAP_SIZE=%lu, CORE_MAP=%p, MEM_START=%p\n",
+	        	MEM_BYTES,
+	        	NUM_PAGES,
+	        	CORE_MAP_SIZE,
+	        	(void*)CORE_MAP,
+	        	(void*)MEM_START);
 }
 
 static
@@ -65,8 +87,12 @@ getppages(unsigned long npages)
 	paddr_t addr;
 
 	spinlock_acquire(&stealmem_lock);
-
+	
+	// kprintf("getppages(%lu), addr=%p, MEM_START=%p\n", 
+	//         	npages, (void*)addr, (void*)MEM_START);
 	addr = ram_stealmem(npages);
+	// addr = MEM_START;
+	// MEM_START += npages * PAGE_SIZE;
 	
 	spinlock_release(&stealmem_lock);
 	return addr;
@@ -88,7 +114,6 @@ void
 free_kpages(vaddr_t addr)
 {
 	/* nothing - leak the memory. */
-
 	(void)addr;
 }
 
