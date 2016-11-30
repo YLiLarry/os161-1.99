@@ -54,45 +54,102 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
+static paddr_t MEM_AVAL_START;
 static paddr_t MEM_START;
 static paddr_t MEM_END;
-static paddr_t CORE_MAP;
+static struct frame* CORE_MAP;
 static unsigned long MEM_BYTES; 
 static unsigned long NUM_PAGES; 
-static unsigned long CORE_MAP_SIZE;
+static unsigned long CORE_MAP_BYTES;
+static unsigned long CORE_MAP_NPAGES;
+static bool BOOTSTRAP_DONE = false;
 
 struct frame {
    bool in_use;
+   unsigned long block_len;
 };
 
 void vm_bootstrap(void) {
 	/* Init core map */
-	// ram_getsize(&CORE_MAP, &MEM_END);
-	MEM_BYTES = MEM_END - CORE_MAP;
+	ram_getsize(&MEM_START, &MEM_END);
+	MEM_BYTES = MEM_END - (paddr_t)CORE_MAP;
+	CORE_MAP = (struct frame*)PADDR_TO_KVADDR(MEM_START);
 	NUM_PAGES = MEM_BYTES / PAGE_SIZE;
-	CORE_MAP_SIZE = sizeof(struct frame) * NUM_PAGES;
-	MEM_START = CORE_MAP + CORE_MAP_SIZE;
-	kprintf("MEM_BYTES=%lu, NUM_PAGES=%lu, CORE_MAP_SIZE=%lu, CORE_MAP=%p, MEM_START=%p\n",
+	CORE_MAP_BYTES = NUM_PAGES * sizeof(struct frame);
+	CORE_MAP_NPAGES = DIVROUNDUP(CORE_MAP_BYTES, PAGE_SIZE);
+	MEM_AVAL_START = (paddr_t)CORE_MAP + CORE_MAP_NPAGES * PAGE_SIZE;
+	kprintf("MEM_BYTES=%lu, NUM_PAGES=%lu, CORE_MAP_BYTES=%lu, CORE_MAP_NPAGES=%lu, CORE_MAP=%p, MEM_AVAL_START=%p, MEM_END=%p\n",
 	        	MEM_BYTES,
 	        	NUM_PAGES,
-	        	CORE_MAP_SIZE,
+	        	CORE_MAP_BYTES,
+	        	CORE_MAP_NPAGES,
 	        	(void*)CORE_MAP,
-	        	(void*)MEM_START);
+	        	(void*)MEM_AVAL_START,
+	        	(void*)MEM_END);
+	for (unsigned long i = 0; i < NUM_PAGES; i++) {
+		struct frame f;
+		f.in_use = (i < CORE_MAP_NPAGES);
+		f.block_len = 0;
+		// kprintf("CORE_MAP[%lu]=%p\n", i, CORE_MAP+i);
+		CORE_MAP[i] = f;
+	}
+	BOOTSTRAP_DONE = true;
+	kprintf("CORE_MAP inited\n");
 }
+
+// static bool fit(struct frame* f, unsigned long npages) {
+// 	unsigned long consecutive = 0;
+// 	while 
+// }
 
 static
 paddr_t
 getppages(unsigned long npages)
 {
-	paddr_t addr;
-
+	paddr_t addr = 0;
+	
 	spinlock_acquire(&stealmem_lock);
 	
-	// kprintf("getppages(%lu), addr=%p, MEM_START=%p\n", 
-	//         	npages, (void*)addr, (void*)MEM_START);
-	addr = ram_stealmem(npages);
-	// addr = MEM_START;
-	// MEM_START += npages * PAGE_SIZE;
+	if (BOOTSTRAP_DONE) {
+	
+		kprintf("getppages(%lu)\n", npages);
+		// find a space 
+		bool found_space = false;
+		unsigned long i = 0;
+		for (i = 0; i < NUM_PAGES; i++) {
+			if (CORE_MAP[i].in_use) {
+				// kprintf("CORE_MAP[%lu] is in use\n", i);
+				continue;
+			}
+			// found an empty frame, check if the consecutive space is long enough
+			bool long_enough = true;
+			unsigned long c;
+			for (c = 0; c < npages; c++) {
+				if (CORE_MAP[i+c].in_use) {
+					long_enough = false;
+					break;
+				}
+			}
+			if (! long_enough) {
+				i += c;
+				continue;
+			}
+			// if long enough
+			found_space = true;
+			CORE_MAP[i].block_len = npages;
+			addr = MEM_START + i * PAGE_SIZE;
+			for (c = 0; c < npages; c++) {
+				KASSERT(! CORE_MAP[i+c].in_use);
+				CORE_MAP[i+c].in_use = true;
+			}
+			break;
+		}
+
+		kprintf("getppages(%lu), addr=%p, i=%lu\n", npages, (void*)addr, i);
+
+	} else {
+		addr = ram_stealmem(npages);
+	}
 	
 	spinlock_release(&stealmem_lock);
 	return addr;
