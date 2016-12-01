@@ -78,14 +78,14 @@ void vm_bootstrap(void) {
 	CORE_MAP_BYTES = NUM_PAGES * sizeof(struct frame);
 	CORE_MAP_NPAGES = DIVROUNDUP(CORE_MAP_BYTES, PAGE_SIZE);
 	MEM_AVAL_START = (paddr_t)CORE_MAP + CORE_MAP_NPAGES * PAGE_SIZE;
-	kprintf("MEM_BYTES=%lu, NUM_PAGES=%lu, CORE_MAP_BYTES=%lu, CORE_MAP_NPAGES=%lu, CORE_MAP=%p, MEM_AVAL_START=%p, MEM_END=%p\n",
-	        	MEM_BYTES,
-	        	NUM_PAGES,
-	        	CORE_MAP_BYTES,
-	        	CORE_MAP_NPAGES,
-	        	(void*)CORE_MAP,
-	        	(void*)MEM_AVAL_START,
-	        	(void*)MEM_END);
+	// kprintf("MEM_BYTES=%lu, NUM_PAGES=%lu, CORE_MAP_BYTES=%lu, CORE_MAP_NPAGES=%lu, CORE_MAP=%p, MEM_AVAL_START=%p, MEM_END=%p\n",
+	//         	MEM_BYTES,
+	//         	NUM_PAGES,
+	//         	CORE_MAP_BYTES,
+	//         	CORE_MAP_NPAGES,
+	//         	(void*)CORE_MAP,
+	//         	(void*)MEM_AVAL_START,
+	//         	(void*)MEM_END);
 	for (unsigned long i = 0; i < NUM_PAGES; i++) {
 		struct frame f;
 		f.in_use = (i < CORE_MAP_NPAGES);
@@ -141,7 +141,7 @@ getppages(unsigned long npages)
 			break;
 		}
 		
-		kprintf("getppages(%lu), alloc addr=%p, frame number=%lu\n", npages, (void*)addr, i);
+		// kprintf("getppages(%lu), alloc addr=%p, frame number=%lu\n", npages, (void*)addr, i);
 		
 		if (i >= NUM_PAGES) {
 			panic("getppages: Out of memory!\n");
@@ -172,8 +172,10 @@ alloc_kpages(int npages)
 void 
 free_kpages(vaddr_t addr)
 {
+	spinlock_acquire(&stealmem_lock);
+	
 	long unsigned fn = (KVADDR_TO_PADDR(addr) - MEM_START) / PAGE_SIZE;
-	kprintf("kfree_kpages(%p), frame number freed=%lu\n", (void*)addr, fn);
+	// kprintf("kfree_kpages(%p), frame number freed=%lu\n", (void*)addr, fn);
 	struct frame f = CORE_MAP[fn];
 	// must be a memory allocated by kmalloc
 	KASSERT(f.block_len > 0);
@@ -184,6 +186,8 @@ free_kpages(vaddr_t addr)
 		CORE_MAP[fn + i].in_use = false;
 	}
 	CORE_MAP[fn].block_len = 0;
+	
+	spinlock_release(&stealmem_lock);
 }
 
 void
