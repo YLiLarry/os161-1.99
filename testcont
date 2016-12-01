@@ -1,0 +1,16 @@
+#!/bin/bash
+kernel1=/u/cs350/cs350_build_results/3/y667li/root/kernel
+kernel2=~/cs350-os161/root/kernel
+kernel=$kernel2
+config=~/cs350-os161/root/sys161.conf
+
+cmd=$1;
+for i in `seq 1 9`; do
+  cmd="$cmd $cmd"
+done
+echo $cmd | wc
+echo 
+echo 
+echo "using $kernel"
+
+pushd ~/cs350-os161/root/; sys161 -c $config $kernel "$cmd q"; popd

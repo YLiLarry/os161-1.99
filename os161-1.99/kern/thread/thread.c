@@ -250,6 +250,7 @@ thread_destroy(struct thread *thread)
 	/* Thread subsystem fields */
 	KASSERT(thread->t_proc == NULL);
 	if (thread->t_stack != NULL) {
+		// kprintf("thread_destroy: %p\n", (void*)thread->t_stack);
 		kfree(thread->t_stack);
 	}
 	threadlistnode_cleanup(&thread->t_listnode);
@@ -494,6 +495,9 @@ thread_fork(const char *name,
 
 	/* Allocate a stack */
 	newthread->t_stack = kmalloc(STACK_SIZE);
+	
+	// kprintf("thread_fork: %p\n", (void*)newthread->t_stack);
+	
 	if (newthread->t_stack == NULL) {
 		thread_destroy(newthread);
 		return ENOMEM;

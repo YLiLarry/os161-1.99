@@ -77,14 +77,15 @@ void vm_bootstrap(void) {
 	NUM_PAGES = MEM_BYTES / PAGE_SIZE;
 	CORE_MAP_BYTES = NUM_PAGES * sizeof(struct frame);
 	CORE_MAP_NPAGES = DIVROUNDUP(CORE_MAP_BYTES, PAGE_SIZE);
-	MEM_AVAL_START = (paddr_t)CORE_MAP + CORE_MAP_NPAGES * PAGE_SIZE;
-	// kprintf("MEM_BYTES=%lu, NUM_PAGES=%lu, CORE_MAP_BYTES=%lu, CORE_MAP_NPAGES=%lu, CORE_MAP=%p, MEM_AVAL_START=%p, MEM_END=%p\n",
+	MEM_AVAL_START = MEM_START + CORE_MAP_NPAGES * PAGE_SIZE;
+	// kprintf("MEM_BYTES=%lu, NUM_PAGES=%lu, CORE_MAP_BYTES=%lu, CORE_MAP_NPAGES=%lu, CORE_MAP=%p, MEM_AVAL_START=%p, MEM_START=%p, MEM_END=%p\n",
 	//         	MEM_BYTES,
 	//         	NUM_PAGES,
 	//         	CORE_MAP_BYTES,
 	//         	CORE_MAP_NPAGES,
 	//         	(void*)CORE_MAP,
 	//         	(void*)MEM_AVAL_START,
+	//         	(void*)MEM_START,
 	//         	(void*)MEM_END);
 	for (unsigned long i = 0; i < NUM_PAGES; i++) {
 		struct frame f;
@@ -94,7 +95,7 @@ void vm_bootstrap(void) {
 		CORE_MAP[i] = f;
 	}
 	BOOTSTRAP_DONE = true;
-	kprintf("CORE_MAP inited\n");
+	// kprintf("CORE_MAP inited\n");
 }
 
 
@@ -172,10 +173,16 @@ alloc_kpages(int npages)
 void 
 free_kpages(vaddr_t addr)
 {
+	
+	if (KVADDR_TO_PADDR(addr) < MEM_START) {
+		return;
+	}
+	
 	spinlock_acquire(&stealmem_lock);
 	
 	long unsigned fn = (KVADDR_TO_PADDR(addr) - MEM_START) / PAGE_SIZE;
-	// kprintf("kfree_kpages(%p), frame number freed=%lu\n", (void*)addr, fn);
+	// kprintf("kfree_kpages(%p), paddr=%p, frame number freed=%lu\n", 
+	//         (void*)addr, (void*)KVADDR_TO_PADDR(addr), fn);
 	struct frame f = CORE_MAP[fn];
 	// must be a memory allocated by kmalloc
 	KASSERT(f.block_len > 0);
@@ -343,12 +350,15 @@ void
 as_destroy(struct addrspace *as)
 {
 	// if (as->as_pbase1) {
+		// kprintf("as_destroy: kfree_kpages %p\n", (void*)PADDR_TO_KVADDR(as->as_pbase1));
 		free_kpages(PADDR_TO_KVADDR(as->as_pbase1));
 	// }
 	// if (as->as_pbase2) {
+		// kprintf("as_destroy: kfree_kpages %p\n", (void*)PADDR_TO_KVADDR(as->as_pbase2));
 		free_kpages(PADDR_TO_KVADDR(as->as_pbase2));
 	// }
 	// if (as->as_stackpbase) {
+		// kprintf("as_destroy: kfree_kpages %p\n", (void*)PADDR_TO_KVADDR(as->as_stackpbase));
 		free_kpages(PADDR_TO_KVADDR(as->as_stackpbase));
 	// }
 	
