@@ -97,10 +97,6 @@ void vm_bootstrap(void) {
 	kprintf("CORE_MAP inited\n");
 }
 
-// static bool fit(struct frame* f, unsigned long npages) {
-// 	unsigned long consecutive = 0;
-// 	while 
-// }
 
 static
 paddr_t
@@ -112,10 +108,10 @@ getppages(unsigned long npages)
 	
 	if (BOOTSTRAP_DONE) {
 	
-		kprintf("getppages(%lu)\n", npages);
+		// kprintf("getppages(%lu)\n", npages);
 		// find a space 
 		bool found_space = false;
-		unsigned long i = 0;
+		unsigned long i = 0; // frame number
 		for (i = 0; i < NUM_PAGES; i++) {
 			if (CORE_MAP[i].in_use) {
 				// kprintf("CORE_MAP[%lu] is in use\n", i);
@@ -144,8 +140,12 @@ getppages(unsigned long npages)
 			}
 			break;
 		}
-
-		kprintf("getppages(%lu), addr=%p, i=%lu\n", npages, (void*)addr, i);
+		
+		kprintf("getppages(%lu), alloc addr=%p, frame number=%lu\n", npages, (void*)addr, i);
+		
+		if (i >= NUM_PAGES) {
+			panic("getppages: Out of memory!\n");
+		}
 
 	} else {
 		addr = ram_stealmem(npages);
@@ -161,17 +161,29 @@ alloc_kpages(int npages)
 {
 	paddr_t pa;
 	pa = getppages(npages);
+	
 	if (pa==0) {
 		return 0;
 	}
+	
 	return PADDR_TO_KVADDR(pa);
 }
 
 void 
 free_kpages(vaddr_t addr)
 {
-	/* nothing - leak the memory. */
-	(void)addr;
+	long unsigned fn = (KVADDR_TO_PADDR(addr) - MEM_START) / PAGE_SIZE;
+	kprintf("kfree_kpages(%p), frame number freed=%lu\n", (void*)addr, fn);
+	struct frame f = CORE_MAP[fn];
+	// must be a memory allocated by kmalloc
+	KASSERT(f.block_len > 0);
+	// free the block
+	for (long unsigned i = 0; i < f.block_len; i++) {
+		KASSERT(CORE_MAP[fn + i].in_use);
+		KASSERT(i == 0 ? CORE_MAP[fn + i].block_len > 0 : CORE_MAP[fn + i].block_len == 0);
+		CORE_MAP[fn + i].in_use = false;
+	}
+	CORE_MAP[fn].block_len = 0;
 }
 
 void
@@ -326,6 +338,16 @@ as_create(void)
 void
 as_destroy(struct addrspace *as)
 {
+	// if (as->as_pbase1) {
+		free_kpages(PADDR_TO_KVADDR(as->as_pbase1));
+	// }
+	// if (as->as_pbase2) {
+		free_kpages(PADDR_TO_KVADDR(as->as_pbase2));
+	// }
+	// if (as->as_stackpbase) {
+		free_kpages(PADDR_TO_KVADDR(as->as_stackpbase));
+	// }
+	
 	kfree(as);
 }
 

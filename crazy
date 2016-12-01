@@ -1,0 +1,9 @@
+A350=3
+A350PATH=~/cs350-os161/
+
+sys() {
+  pushd $A350PATH/root/ && sys161 kernel $1; popd
+}
+
+sys "p uw-testbin/vm-data1; p uw-testbin/vm-data3; p uw-testbin/romemwrite; p uw-testbin/vm-crash2; p testbin/sort; p testbin/matmult; p uw-testbin/vm-data1; p uw-testbin/widefork; p uw-testbin/hogparty; q"
+
