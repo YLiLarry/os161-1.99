@@ -72,7 +72,7 @@ struct frame {
 void vm_bootstrap(void) {
 	/* Init core map */
 	ram_getsize(&MEM_START, &MEM_END);
-	MEM_BYTES = MEM_END - (paddr_t)CORE_MAP;
+	MEM_BYTES = MEM_END - MEM_START;
 	CORE_MAP = (struct frame*)PADDR_TO_KVADDR(MEM_START);
 	NUM_PAGES = MEM_BYTES / PAGE_SIZE;
 	CORE_MAP_BYTES = NUM_PAGES * sizeof(struct frame);
