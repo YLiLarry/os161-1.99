@@ -50,12 +50,12 @@ struct vnode;
 
 struct addrspace {
   vaddr_t as_vbase1;
-  paddr_t as_page_table1;
+  vaddr_t as_page_table1;
   size_t as_npages1;
   vaddr_t as_vbase2;
-  paddr_t as_page_table2;
+  vaddr_t as_page_table2;
   size_t as_npages2;
-  paddr_t as_stack_page_table;
+  vaddr_t as_stack_page_table;
 #if OPT_A3
   bool load_done;
 #endif
